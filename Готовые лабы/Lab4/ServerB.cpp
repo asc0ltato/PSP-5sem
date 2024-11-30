@@ -70,6 +70,8 @@ string GetErrorMsgText(int code) {
     return msgText;
 }
 
+//вопрос по теории: как расчитывается broadcast с ip 172.20.10.2 и маской подсети 255.255.254.0
+//инверсия маски подсети, то в ответе 172.20.11.255
 string SetErrorMsgText(string msgText, int code) {
     return msgText + GetErrorMsgText(code);
 }
@@ -100,17 +102,17 @@ bool GetRequestFromClient(char* name, short port, struct sockaddr* from, int* fl
         if ((len = recvfrom(sS, buf, sizeof(buf), NULL, from, flen)) == SOCKET_ERROR) {
             int errCode = WSAGetLastError();
             if (errCode == WSAETIMEDOUT) {
-                return false; 
+                return false;
             }
             else {
                 closesocket(sS);
-                throw SetErrorMsgText("recvfrom: ", errCode); 
+                throw SetErrorMsgText("recvfrom: ", errCode);
             }
         }
 
         if (strcmp(buf, name) == 0) {
             closesocket(sS);
-            return true;  
+            return true;
         }
     }
 }
@@ -151,13 +153,19 @@ void DiscoverServers(char* name, short port) {
     serv.sin_addr.s_addr = inet_addr("172.20.10.15");
     int len = sizeof(serv);
 
-    sendto(sS, name, strlen(name) + 1, 0, (struct sockaddr*)&serv, len);
+    if (sendto(sS, name, strlen(name) + 1, 0, (struct sockaddr*)&serv, len) == SOCKET_ERROR) {
+        throw SetErrorMsgText("sendto: ", WSAGetLastError());
+    }
 
     //для получения ответов
     fd_set fds; //множество дескрипторов для select
     struct timeval tv; //для задания таймаута
-    tv.tv_sec = 5; 
-    tv.tv_usec = 0; 
+    tv.tv_sec = 5;
+    tv.tv_usec = 0;
+
+    int serverCount = 0;
+
+    cout << "Ожидание ответа от серверов..." << endl;
 
     //проверка на наличие ответов
     while (true) {
@@ -172,16 +180,17 @@ void DiscoverServers(char* name, short port) {
             int recvLen = recvfrom(sS, buf, sizeof(buf), 0, (struct sockaddr*)&from, &fromLen);
 
             if (recvLen > 0 && strcmp(buf, name) == 0) {
-                cout << "Найден сервер с позывным " << name << " по адресу: " << inet_ntoa(from.sin_addr) << endl;
-                break;
+                serverCount++;
+                cout << "Сервер найден с позывным " << name << ". Адрес: "
+                    << inet_ntoa(from.sin_addr) << ", порт: " << ntohs(from.sin_port) << endl;
             }
         }
         else {
-            cout << "Сервера с позывным " << name << " не найдены." << endl;
             break;
         }
     }
 
+    cout << "Найдено серверов: " << serverCount << endl;
     closesocket(sS);
 }
 
@@ -202,7 +211,7 @@ int main()
         DiscoverServers((char*)"Hello", 2000);
 
         while (true) {
-            memset(&clnt, 0, sizeof(clnt)); 
+            memset(&clnt, 0, sizeof(clnt));
 
             if (GetRequestFromClient((char*)"Hello", 2000, (sockaddr*)&clnt, &lclnt)) {
                 cout << "Получен правильный позывной от клиента." << endl;

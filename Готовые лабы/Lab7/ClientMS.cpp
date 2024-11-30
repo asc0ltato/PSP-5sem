@@ -1,11 +1,9 @@
 ﻿#include <iostream>
-#include <string>
-#include <clocale>
+#include <Windows.h>
 #include <ctime>
-#include "Winsock2.h"
-#pragma comment(lib, "WS2_32.lib")
-#pragma warning(disable:4996)
+#include <string>
 using namespace std;
+#pragma warning(disable:4996)
 
 string GetErrorMsgText(int code) {
     string msgText;
@@ -53,102 +51,79 @@ string GetErrorMsgText(int code) {
     case WSATRY_AGAIN:msgText = "WSATRY_AGAIN: Неавторизированный хост не найден"; break;
     case WSANO_RECOVERY:msgText = "WSANO_RECOVERY: Неопределенная  ошибка"; break;
     case WSANO_DATA:msgText = "WSANO_DATA: Нет записи запрошенного типа "; break;
-    case WSA_INVALID_HANDLE:msgText = "WSA_INVALID_HANDLE: Указанный дескриптор события  с ошибкой"; break;
-    case WSA_INVALID_PARAMETER:msgText = "WSA_INVALID_PARAMETER: Один или более параметров с ошибкой"; break;
-    case WSA_IO_INCOMPLETE:msgText = "WSA_IO_INCOMPLETE: Объект ввода-вывода не в сигнальном состоянии"; break;
-    case WSA_IO_PENDING:msgText = "WSA_IO_PENDING: Операция завершится позже"; break;
-    case WSA_NOT_ENOUGH_MEMORY:msgText = "WSA_NOT_ENOUGH_MEMORY: Не достаточно памяти"; break;
-    case WSA_OPERATION_ABORTED:msgText = "WSA_OPERATION_ABORTED: Операция отвергнута"; break;
     case WSAEINVALIDPROCTABLE:msgText = "WSAEINVALIDPROCTABLE: Ошибочный сервис"; break;
     case WSAEINVALIDPROVIDER:msgText = "WSAEINVALIDPROVIDER: Ошибка в версии сервиса"; break;
     case WSAEPROVIDERFAILEDINIT:msgText = "WSAEPROVIDERFAILEDINIT: Невозможно инициализировать сервис"; break;
     case WSASYSCALLFAILURE: msgText = "WSASYSCALLFAILURE: Аварийное завершение системного вызова"; break;
-    default: msgText = "***ERROR***"; break;
+    case 2: msgText = "Неудачное завершение"; break;
+    case ERROR_INVALID_PARAMETER: msgText = "ERROR_INVALID_PARAMETER: Недопустимый параметр"; break;
+    case ERROR_NO_DATA: msgText = "ERROR_NO_DATA: Канал закрывается"; break;
+    case ERROR_PIPE_CONNECTED: msgText = "ERROR_PIPE_CONNECTED: Есть процесс на другом конце канала"; break;
+    case ERROR_PIPE_LISTENING: msgText = "ERROR_PIPE_LISTENING: Ожидание открытия канала другим процессом"; break;
+    case ERROR_CALL_NOT_IMPLEMENTED: msgText = "ERROR_CALL_NOT_IMPLEMENTED: Функция не поддерживается на данной системе"; break;
+    case ERROR_BROKEN_PIPE: msgText = "ERROR_BROKEN_PIPE: Другой конец канала закрыт"; break;
+    case ERROR_PIPE_BUSY: msgText = "ERROR_PIPE_BUSY: Канал занят"; break;
+    case ERROR_PIPE_LOCAL: msgText = "ERROR_PIPE_LOCAL: Операция для локального канала"; break;
+    case ERROR_PIPE_NOT_CONNECTED: msgText = "ERROR_PIPE_NOT_CONNECTED: Канал не подключен"; break;
+    case ERROR_BAD_PIPE: msgText = "ERROR_BAD_PIPE: Неправильное состояние канала"; break;
+    case ERROR_SEM_TIMEOUT: msgText = "ERROR_SEM_TIMEOUT: Время ожидания операции истекло"; break;
+    case ERROR_IO_PENDING: msgText = "ERROR_IO_PENDING: Операция ввода/вывода в процессе выполнения"; break;
+    default: msgText = "**ERROR**: Неизвестная ошибка"; break;
+
     };
     return msgText;
 }
 
-string SetErrorMsgText(string msgText, int code) {
+string SetMailError(string msgText, int code) {
     return msgText + GetErrorMsgText(code);
 }
 
-bool GetServer(char* call, short port, struct sockaddr* from, int* flen) {
-    SOCKET cC;
-    SOCKADDR_IN serv;
-    BOOL broadcast = TRUE;
-    char buf[50];
-    int lbuf;
-
-    serv.sin_family = AF_INET;
-    serv.sin_port = htons(port);
-    serv.sin_addr.s_addr = inet_addr("172.20.10.15");
+int main()
+{
+    setlocale(LC_ALL, "RU");
+    HANDLE cH;
+    DWORD dwWrite;
+    //8 задание. 500
+    string wbuf;
 
     try {
-        if ((cC = socket(AF_INET, SOCK_DGRAM, NULL)) == INVALID_SOCKET) {
-            throw SetErrorMsgText("socket: ", WSAGetLastError());
+        //6 задание. L"\\\\ASCOLTAT0\\mailslot\\Box"
+        //7 задание. L"\\\\*\\mailslot\\Box"
+        //8 задание. Чтобы сообщения доходили трем серверам, нужно, чтобы длина отправляемых сообщений была не > 425
+        //Если < 425, то пересылка без гарантий доставки. Пересыка > 425 возможна только от 1 клиента к 1 серверу.
+        //Поэтому если увеличить размер макс. размер перемылаемого сообщения, то от 1 клиента к 3 северам сообщения доходить не будут.
+        if ((cH = CreateFile(L"\\\\*\\mailslot\\Box", GENERIC_WRITE | GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, NULL, NULL)) == INVALID_HANDLE_VALUE) {
+            throw SetMailError("CreateFile: ", GetLastError());
         }
 
-        if (setsockopt(cC, SOL_SOCKET, SO_BROADCAST, (char*)&broadcast, sizeof(broadcast)) == SOCKET_ERROR) {
-            throw SetErrorMsgText("setsockopt: ", WSAGetLastError());
-        }
+        int messageCount;
+        cout << "Введите количество передаваемых сообщений: ";
+        cin >> messageCount;
 
-        if (sendto(cC, call, strlen(call) + 1, 0, (sockaddr*)&serv, sizeof(serv)) == SOCKET_ERROR) {
-            throw SetErrorMsgText("sendto: ", WSAGetLastError());
-        }
+        clock_t start = clock();
 
-        if (recvfrom(cC, buf, sizeof(buf), 0, from, flen) == SOCKET_ERROR) {
-            if (WSAGetLastError() == WSAETIMEDOUT) {
-                closesocket(cC);
-                return false;
+        for (int i = 1; i <= messageCount; i++) {
+            wbuf = "Hello from Сlient " + to_string(i) + "";
+            Sleep(1000);
+            if (!WriteFile(cH, wbuf.c_str(), sizeof(wbuf), &dwWrite, NULL)) {
+                throw SetMailError("WriteFile:", GetLastError());
             }
-            throw SetErrorMsgText("recvfrom: ", WSAGetLastError());
+            else {
+                cout << "Сообщение отправлено серверу: " << wbuf << endl;
+            }
         }
 
-        if (strcmp(buf, call) != 0) {
-            closesocket(cC);
-            return false;
-        }
+        clock_t end = clock();
+        double elapsed_time = double(end - start) / CLOCKS_PER_SEC;
+        cout << "Время обмена: " << elapsed_time << " секунд" << endl;
 
-        closesocket(cC);
-        return true;
-    }
-    catch (string errorMsgText) {
-        cout << endl << "WSAGetLastError: " << errorMsgText;
-        closesocket(cC);
-        return false;
-    }
-}
-
-int main() {
-    setlocale(LC_ALL, "Russian");
-    WSADATA wsaData;
-
-    try {
-        if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-            throw SetErrorMsgText("Startup: ", WSAGetLastError());
-        }
-
-        SOCKADDR_IN from;
-        int flen = sizeof(from);
-        char call[] = "Hello";
-        short port = 2000;
-
-        if (GetServer(call, port, (struct sockaddr*)&from, &flen)) {
-            cout << "Сервер найден!" << endl;
-            cout << "Параметры сервера: IP " << inet_ntoa(from.sin_addr) << ", порт " << ntohs(from.sin_port) << endl;
-        }
-        else {
-            cout << "Сервер не найден или неверный отклик." << endl;
-        }
-
-        if (WSACleanup() == SOCKET_ERROR) {
-            throw SetErrorMsgText("Cleanup: ", WSAGetLastError());
+        if (!CloseHandle(cH)) {
+            throw SetMailError("CloseHandle: ", GetLastError());
         }
     }
-    catch (string errorMsgText) {
-        cout << endl << "WSAGetLastError: " << errorMsgText;
+    catch (string ErrorMailText) {
+        cout << endl << "SetMailError: " << ErrorMailText;
     }
 
-    system("pause");
     return 0;
 }
